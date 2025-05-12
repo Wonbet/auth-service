@@ -1,0 +1,15 @@
+server:
+  host: localhost
+  port: 8080
+
+auth:
+  jwt_secret: ${JWT_SECRET}
+  refresh_token_secret: ${REFRESH_TOKEN_SECRET}
+  access_token_ttl: 900
+  refresh_token_ttl: 2592000
+  webhook_url: ${WEBHOOK_URL}
+  allowed_hosts:
+    - example.com
+
+database:
+  dsn: "postgres://postgres:postgres@localhost:5432/auth_db?sslmode=disable"

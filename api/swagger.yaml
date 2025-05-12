@@ -1,0 +1,270 @@
+openapi: 3.0.3
+info:
+  title: Auth Service API
+  description: |
+    API для сервиса аутентификации.
+    
+    Сервис предоставляет API для аутентификации и авторизации пользователей.
+    
+    ## Особенности
+    
+    - Получение пары токенов (access и refresh) для пользователя с указанным идентификатором
+    - Обновление пары токенов
+    - Получение GUID текущего пользователя (защищенный маршрут)
+    - Деавторизация пользователя
+    
+    ## Требования к токенам
+    
+    ### Access токен
+    - Формат: JWT
+    - Алгоритм подписи: SHA512
+    - Не хранится в базе данных
+    
+    ### Refresh токен
+    - Произвольный формат
+    - Передается в формате base64
+    - Хранится в базе в виде bcrypt хеша
+    - Защищен от повторного использования
+    - Защищен от изменений на стороне клиента
+    
+    ## Особенности операции refresh
+    - Операцию можно выполнить только той парой токенов, которая была выдана вместе
+    - При изменении User-Agent операция запрещается и пользователь деавторизуется
+    - При попытке обновления с нового IP отправляется POST-запрос на заданный webhook
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+servers:
+  - url: http://localhost:8080
+    description: Локальный сервер разработки
+  - url: https://api.example.com
+    description: Продакшн сервер
+tags:
+  - name: auth
+    description: Операции аутентификации и авторизации
+  - name: health
+    description: Проверка состояния сервиса
+paths:
+  /auth/token/{user_id}:
+    get:
+      tags:
+        - auth
+      summary: Получение пары токенов
+      description: Получение пары токенов (access и refresh) для пользователя с указанным идентификатором (GUID)
+      operationId: getTokens
+      parameters:
+        - name: user_id
+          in: path
+          description: Идентификатор пользователя (GUID)
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Успешное получение токенов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '400':
+          description: Неверный формат идентификатора пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/refresh:
+    post:
+      tags:
+        - auth
+      summary: Обновление пары токенов
+      description: Обновление пары токенов с использованием refresh токена
+      operationId: refreshTokens
+      requestBody:
+        description: Refresh токен для обновления
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Успешное обновление токенов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '400':
+          description: Неверный формат запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Неверный refresh токен или несоответствие User-Agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/me:
+    get:
+      tags:
+        - auth
+      summary: Получение информации о пользователе
+      description: Получение GUID текущего пользователя (защищенный маршрут)
+      operationId: getUserInfo
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Успешное получение информации о пользователе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          description: Неавторизованный доступ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/logout:
+    post:
+      tags:
+        - auth
+      summary: Выход из системы
+      description: Деавторизация пользователя (защищенный маршрут)
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Успешный выход из системы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          description: Неавторизованный доступ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /health:
+    get:
+      tags:
+        - health
+      summary: Проверка состояния сервиса
+      description: Проверка работоспособности сервиса
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Сервис работает нормально
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+components:
+  schemas:
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT токен доступа
+          example: eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzNWZlMTM1OC1hMDNhLTRiYmEtYjJhYS1iMGIxYzQ5MjY0ZDIiLCJleHAiOjE3MTY0NzY4MDB9.ACCESS_TOKEN
+        refresh_token:
+          type: string
+          description: Refresh токен в формате base64
+          example: ZXlKaGJHY2lPaUpJVXpVeE1pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnpkV0lpT2lJek5XWmxNVE0xT0MxaE1ETmhMVFJpWW1FdFlqSmhZUzFpTUdJeFl6UTVNalkwWkRJaUxDSmxlSEFpT2pFM01UWTBPRGM0TURCOUxnLllPVVJfUkVGUkVTSF9UT0tFTg==
+      required:
+        - access_token
+        - refresh_token
+    RefreshRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh токен в формате base64
+          example: ZXlKaGJHY2lPaUpJVXpVeE1pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnpkV0lpT2lJek5XWmxNVE0xT0MxaE1ETmhMVFJpWW1FdFlqSmhZUzFpTUdJeFl6UTVNalkwWkRJaUxDSmxlSEFpT2pFM01UWTBPRGM0TURCOUxnLllPVVJfUkVGUkVTSF9UT0tFTg==
+      required:
+        - refresh_token
+    UserInfo:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: Идентификатор пользователя (GUID)
+          example: 35fe1358-a03a-4bba-b2aa-b0b1c49264d2
+      required:
+        - user_id
+    LogoutResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Флаг успешного выхода из системы
+          example: true
+      required:
+        - success
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Статус сервиса
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+          description: Время проверки
+          example: 2023-05-12T12:34:56Z
+        version:
+          type: string
+          description: Версия сервиса
+          example: 1.0.0
+      required:
+        - status
+        - timestamp
+        - version
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Сообщение об ошибке
+          example: Invalid token
+      required:
+        - message
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT токен доступа в формате Bearer
